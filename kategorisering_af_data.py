@@ -23,7 +23,7 @@ def categorizer(csvfilen, dirlists, filelist, anvendelsesklasse):
                 else: 
                     category = category.lower()
                     
-                if category == anvendelsesklasse.lower(): 
+                if category == anvendelsesklasse.lower() and filnavn not in ["", " "]: 
                     countc += 1
                     if filnavn.lower() in filelist:
                         countf += 1
@@ -33,10 +33,6 @@ def categorizer(csvfilen, dirlists, filelist, anvendelsesklasse):
                             sektordict[sektor].append(tema)
 
                     else:
-                        if filnavn == "" or filnavn == " ":
-                            countc -= 1
-
-                        else:
                             print (filnavn, " is missing")
     print (countc - countf, " are missing")
     return sektordict
@@ -64,10 +60,7 @@ for root, dirs, files in os.walk(inputworksp):
 anvendelseskoder = ["ru", "eu", "ng"]
 #outputname = "reserverede_udviklingszone"
 for anvendelseskode in anvendelseskoder:
-    outputsp = anvendelseskode
-    print (anvendelseskode)
-    
-    
+    print (anvendelseskode)    
     sektordict = categorizer(liste, dirlist, filelist_UK, anvendelseskode)
     for key, value in sektordict.items() :
         print (key, value)
