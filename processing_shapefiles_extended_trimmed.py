@@ -3,38 +3,21 @@ import arcpy
 #opsætter en masse work enviroment ting 
 arcpy.env.overwriteOutput = True
 arcpy.env.outputMFlag = "Disabled"
+arcpy.env.outputZFlag = "Disabled"
 arcpy.env.extent = "MAXOF"
 
 
-def fieldupdater(fk, fieldname):
+def cleaning_tables(fc, originfield, searchname):
+    arcpy.AddField_management(fc, originfield, "TEXT")
     #lists all fields in feature class where fieldname variable is in
-    fields = [f.name for f in arcpy.ListFields(fk) if fieldname in f.name]
+    fields = [f.name for f in arcpy.ListFields(fc) if searchname in f.name]
     #uses updatecursor to trawl through each row
-    with arcpy.da.UpdateCursor(fk, fields) as cursor:
+    with arcpy.da.UpdateCursor(fc, fields) as cursor:
         for row in cursor:
             #accumulates all field values and puts them into the last field
             row[-1] = ", ".join(map(str, sorted([f for f in list(set(row)) if f != "" and f != " "])))
             cursor.updateRow(row)
-    arcpy.DeleteField_management(fk, fields[:-1])
-
-#funktion der fjerner FIDs og samler felters værdier sammen i "origin" og "sektor"
-def cleaning_tables(fc, originfield):
-    fieldsdelete = [f.name for f in arcpy.ListFields(fc) if "FID_" in f.name]
-    arcpy.DeleteField_management(fc, fieldsdelete)
-
-#    arcpy.AddField_management(fc, sektorfield, "TEXT")
-    arcpy.AddField_management(fc, originfield, "TEXT")
-#    arcpy.AddField_management(fc, temakodefield, "TEXT")
-
-    fieldupdater(fc,"tema" )
-#    fieldupdater(fc, "sektor")
-#    fieldupdater(fc, "kode")
-#
-#    fieldsdelete = [f.name for f in arcpy.ListFields(fc) if
-#                    "sektor_" in f.name and f.name != sektorfield or f.name == "sektor"]     + [f.name for f in arcpy.ListFields(fc) 
-#                    if "tema_" in f.name and f.name != originfield or f.name == "tema"] + [f.name for f in arcpy.ListFields(fc) 
-#                    if "kode_" in f.name and f.name != temakodefield or f.name == "tema"]
-#    arcpy.DeleteField_management(fc, fieldsdelete)
+    arcpy.DeleteField_management(fc, fields[:-1])
     
 #tjekker om geometrien i featuren er "ren", ellers repareres den. 
 def chkgeom(file):
@@ -160,30 +143,32 @@ for anvendelseskode in anvendelseskoder:
     filedict, temakodedict = categorizer(liste, dirlist, filelist_UK, anvendelseskode)
     print (temakodedict)
     sektordslv = "sektor_dsl"
-    origindslv = "tema_dsl"
+    origindslv, origin = "tema_dsl", "tema"
     temakodedslv = "kode_dsl"
+    fiddslv, fid = "fid_dslv", "fid_"
     sektorlist = []
     for key, value in filedict.items():
         print (key, " contains: ", value)
         keyz = str(key).replace(" ", "_").replace("(", "").replace(")","").replace("/", "_")
         output = os.path.join(throwoutput, anvendelseskode + "_" + keyz+".shp")
-        if len(value) > 1:
+
             #for hver sektor (olie/gas, vindenergi, fiskeri etc,)hvor der er mere end 1 datasæt,
             #laves der en union, som dissolves og "rengøres" for rækker med ens sektor og datasæt origin
-            arcpy.Union_analysis(value, output)
+            arcpy.Union_analysis(value, output, "", "", "NO_GAPS")  
             #i virkeligheden kunne "cleaning_tables" nok fjernes, da dens funktion løses senere
-            cleaning_tables(output, origindslv)
+            cleaning_tables(output, origindslv, origin )
+            cleaning_tables(output, fiddslv, fid)
+            lyrz = "layer"
+            arcpy.MakeFeatureLayer_management(output, lyrz, " !{}! <> -1 OR !SHAPE.AREA@SQUAREKILOMETERS! <= 1 AND !{}! = -1".format(fiddslv, fiddslv)
+            arcpy.SelectLayerByAttribute_management (lyrz, "", "!{}! = -1".format(fiddslv))
+            tmpelim = "in_memory/tmp3_elim"
+            arcpy.Eliminate_management (lyrz, tmpelim )
             output2 = os.path.join(throwoutput, anvendelseskode + "_" + keyz+"dslv"+".shp")
-            arcpy.Dissolve_management(output, output2, [origindslv], "", "SINGLE_PART")
+            arcpy.Dissolve_management(tmpelim, output2, [origindslv], "", "SINGLE_PART")
             addfield(output2, str(key), sektordslv )
             addfield(output2, str(temakodedict[key]), temakodedslv)
             sektorlist.append(os.path.join(throwoutput, anvendelseskode + "_" + keyz+"dslv"+".shp"))
             arcpy.Delete_management(output)
-        else: #i tilfælde af kun et datasæt, kopieres det over med en ny titel
-            arcpy.CopyFeatures_management(value[0], output)
-            sektorlist.append(output)
-            addfield(output, str(key), sektordslv )
-            addfield(output, str(temakodedict[key]), temakodedslv)
         for i in value:         
             arcpy.Delete_management(i)
     print (sektorlist)
